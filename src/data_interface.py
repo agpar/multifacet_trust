@@ -22,23 +22,13 @@ NUM_USERS = 10000
 DATA_DIR = '/home/alex/Documents/datasets/yelp'
 READ_SAMPLE = True
 
-if not READ_SAMPLE:
-    USERS_FILE = path.join(DATA_DIR, 'user.json')
-    BUSINESS_FILE = path.join(DATA_DIR, 'business.json')
-    REVIEW_FILE = path.join(DATA_DIR, 'review.json')
-    TIP_FILE = path.join(DATA_DIR, 'tip.json')
-else:
-    USERS_FILE = path.join(DATA_DIR, 'user_sample.json')
-    BUSINESS_FILE = path.join(DATA_DIR, 'business_sample.json')
-    REVIEW_FILE = path.join(DATA_DIR, 'review_sample.json')
-    TIP_FILE = path.join(DATA_DIR, 'tip_sample.json')
-
 RatingTuple = namedtuple('Rating', 'user_id item_id score')
 
 class YelpData:
-    def __init__(self, users, reviews, businesses):
+    def __init__(self, users, reviews, tips, businesses):
         self._users = users
         self._reviews = reviews
+        self._tips = tips
         self._businesses = businesses
         self._rating_tuples = []
 
@@ -46,12 +36,18 @@ class YelpData:
         user = self._users[user_id]
         if user.get('reviews'):
             return user
-        reviews = self._reviews[user_id]
-        user['reviews'] = []
+        reviews = self._reviews.get(user_id, [])
+        tips = self._tips.get(user_id, [])
+        user['reviews'], user['tips'] = [], []
         for review in reviews:
-            business = self._businesses.get(review['review_id'])
+            business = self._businesses[review['business_id']]
             review['business'] = business
             user['reviews'].append(review)
+        for tip in tips:
+            business = self._businesses[tip['business_id']]
+            tip['business'] = business
+            user['tips'].append(tip)
+
         return user
 
     def users(self):
@@ -74,6 +70,17 @@ class YelpData:
 
 
 def read_data(read_sample=READ_SAMPLE):
+    if not read_sample:
+        USERS_FILE = path.join(DATA_DIR, 'user.json')
+        BUSINESS_FILE = path.join(DATA_DIR, 'business.json')
+        REVIEW_FILE = path.join(DATA_DIR, 'review.json')
+        TIP_FILE = path.join(DATA_DIR, 'tip.json')
+    else:
+        USERS_FILE = path.join(DATA_DIR, 'user_sample.json')
+        BUSINESS_FILE = path.join(DATA_DIR, 'business_sample.json')
+        REVIEW_FILE = path.join(DATA_DIR, 'review_sample.json')
+        TIP_FILE = path.join(DATA_DIR, 'tip_sample.json')
+
     # Indexed by user_id.
     users = {}
     with open(USERS_FILE, 'r') as f:
@@ -94,23 +101,36 @@ def read_data(read_sample=READ_SAMPLE):
             if review['user_id'] in user_ids:
                 review['text'] = ''
                 reviews[review['user_id']].append(review)
-    reviewed_business_ids = dict({r['business_id']: r['review_id'] for rlist in reviews.values() for r in rlist})
+    reviewed_business_ids = set([r['business_id'] for rlist in reviews.values() for r in rlist])
 
-    # Indexed by review_id
+
+    # Indexed by user_id
+    tips = defaultdict(list)
+    with open(TIP_FILE, 'r') as f:
+        for line in f:
+            tip = json.loads(line)
+            if tip['user_id'] in user_ids:
+                tip['text'] = ''
+                tips[tip['user_id']].append(tip)
+    tipped_business_ids = set([t['business_id'] for tlist in tips.values() for t in tlist])
+
+
+    # Indexed by review_id and tip id
     businesses = {}
     with open(BUSINESS_FILE) as f:
         for line in f:
             business = json.loads(line)
-            if business['business_id'] in reviewed_business_ids.keys():
-                businesses[reviewed_business_ids[business['business_id']]] = business
+            if business['business_id'] in reviewed_business_ids or business['business_id'] in tipped_business_ids:
+                businesses[business['business_id']] = business
 
-    return YelpData(users, reviews, businesses)
+    return YelpData(users, reviews, tips, businesses)
 
 
-def save_sample(users, reviews, businesses):
+def save_sample(users, reviews, tips, businesses):
     """Write out the NUM_USERS samples so they can be used again later."""
     USER_SAMPLE_PATH = path.join(DATA_DIR, 'user_sample.json')
     REVIEW_SAMPLE_PATH = path.join(DATA_DIR, 'review_sample.json')
+    TIP_SAMPLE_PATH = path.join(DATA_DIR, 'tip_sample.json')
     BUSINESS_SAMPLE_PATH = path.join(DATA_DIR, 'business_sample.json')
 
     with open(USER_SAMPLE_PATH, 'w') as f:
@@ -125,6 +145,13 @@ def save_sample(users, reviews, businesses):
                 if review.get('business'):
                     del review['business']
                 f.write(json.dumps(review)+"\n")
+
+    with open(TIP_SAMPLE_PATH, 'w') as f:
+        for user_tips in tips.values():
+            for tip in user_tips:
+                if tip.get('business'):
+                    del tip['business']
+                f.write(json.dumps(tip)+"\n")
 
     with open(BUSINESS_SAMPLE_PATH, 'w') as f:
         for business in businesses.values():
