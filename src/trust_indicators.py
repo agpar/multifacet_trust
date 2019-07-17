@@ -2,7 +2,8 @@
 Trust indicators from (Mauro et al. 2019) and (Fang et al. 2015)
 for which coefficients will eventually be learned.
 """
-from collections import defaultdict
+from collections import defaultdict, Counter
+import numpy as np
 
 
 class YelpTrustIndicators:
@@ -125,17 +126,14 @@ class YelpTrustIndicators:
             self._addi(u, 'visibility', indi)
 
     def _count_global_feedback(self, user):
-        useful_count = 0
-        funny_count = 0
-        cool_count = 0
-        like_count = 0
+        up_count = 0
         for review in user['reviews']:
-            useful_count += review['useful']
-            funny_count += review['funny']
-            cool_count += review['cool']
+            up_count += review['useful']
+            up_count += review['funny']
+            up_count += review['cool']
         for tip in user['tips']:
-            like_count += tip['compliment_count']
-        return useful_count + funny_count + cool_count + like_count
+            up_count += tip['compliment_count']
+        return up_count
 
     def _count_contributions(self, user):
         return len(user['reviews']) + len(user['tips'])
@@ -162,3 +160,53 @@ class YelpTrustIndicators:
         """Based on Mauro eq 18: feedback relative to an item"""
         reviews = self._yelp_data.get_reviews_for_item(item)
         tips = self._yelp_data.get_tips_for_item(item)
+        counter = Counter()
+
+        for review in reviews:
+            user_id = review['user_id']
+            counter[user_id] += review['useful']
+            counter[user_id] += review['funny']
+            counter[user_id] += review['cool']
+        for tip in tips:
+            user_id = tip['user_id']
+            counter[user_id] += tip['compliment_count']
+
+        most_common = counter.most_common()
+        if not most_common:
+            raise Exception(f"No one has ever reviewed {item}")
+        _, max_ups = most_common[0]
+        if max_ups == 0:
+            raise Exception(f"No one has ever been complimented for reviewing {item}")
+        return counter[user['user_id']] / max_ups
+
+    def _social_relation(self, truster, trustee):
+        numer = len(truster['friends'].intersection(trustee['friends']))
+        denom = len(truster['friends'].union(trustee['friends']))
+        if numer == 0:
+            return 0
+        return numer / denom
+
+    def is_friend(self, truster, trustee):
+        return trustee['user_id'] in truster['friends']
+
+    def to_dataset(self, size):
+        X, Y = [], []
+        users = list(self._yelp_data.users())
+        if size > len(users):
+            raise Exception(f"'size' out of bounds. Only have {len(users)} users in memory.")
+
+        for i1 in range(0, size):
+            for i2 in range(0, size):
+                if i1 == i2:
+                    continue
+                u1, u2 = users[i1], users[i2]
+                x = [val for (key, val) in
+                     sorted(self.get_indicators(u2).items())]
+                x.append(self._social_relation(u1, u2))
+                y = 1 if self.is_friend(u1 ,u2) else 0
+                X.append(np.array(x))
+                Y.append(y)
+
+        return np.array(X), np.array(Y)
+
+

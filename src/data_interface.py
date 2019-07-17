@@ -49,6 +49,11 @@ class YelpData:
         reviews = self._reviews.get(user_id, [])
         tips = self._tips.get(user_id, [])
         user['reviews'], user['tips'] = [], []
+        if not user['friends']:
+            user['friends'] = set()
+        else:
+            user['friends'] = set(u.strip()
+                                  for u in user['friends'].split(","))
         for review in reviews:
             business = self._businesses[review['business_id']]
             review['business'] = business
