@@ -30,7 +30,17 @@ class YelpData:
         self._reviews = reviews
         self._tips = tips
         self._businesses = businesses
+
         self._rating_tuples = []
+        self._reviews_by_item = defaultdict(list)
+        for review_list in self._reviews.values():
+            for review in review_list:
+                self._reviews_by_item[review['business_id']].append(review)
+
+        self._tips_by_item = defaultdict(list)
+        for tip_list in self._tips.values():
+            for tip in tip_list:
+                self._tips_by_item[tip['business_id']].append(tip)
 
     def get_user(self, user_id):
         user = self._users[user_id]
@@ -49,6 +59,26 @@ class YelpData:
             user['tips'].append(tip)
 
         return user
+
+    def get_reviews_for_item(self, business):
+        if isinstance(business, dict):
+            key = business['business_id']
+        elif isinstance(business, str):
+            key = business
+        else:
+            raise Exception("'business' is not a string or a dict")
+
+        return self._reviews_by_item[key]
+
+    def get_tips_for_item(self, business):
+        if isinstance(business, dict):
+            key = business['business_id']
+        elif isinstance(business, str):
+            key = business
+        else:
+            raise Exception("'business' is not a string or a dict")
+
+        return self._tips_by_item[key]
 
     def users(self):
         for user in self._users.values():
