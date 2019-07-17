@@ -179,34 +179,38 @@ class YelpTrustIndicators:
             raise Exception(f"No one has ever been complimented for reviewing {item}")
         return counter[user['user_id']] / max_ups
 
-    def _social_relation(self, truster, trustee):
+    @staticmethod
+    def social_relation(truster, trustee):
         numer = len(truster['friends'].intersection(trustee['friends']))
         denom = len(truster['friends'].union(trustee['friends']))
         if numer == 0:
             return 0
         return numer / denom
 
-    def is_friend(self, truster, trustee):
+    @staticmethod
+    def benevolence(truster, trustee):
+        pass
+
+    @staticmethod
+    def is_friend(truster, trustee):
         return trustee['user_id'] in truster['friends']
 
-    def to_dataset(self, size):
+    def to_dataset(self, start, stop):
         X, Y = [], []
         users = list(self._yelp_data.users())
-        if size > len(users):
+        if stop > len(users):
             raise Exception(f"'size' out of bounds. Only have {len(users)} users in memory.")
 
-        for i1 in range(0, size):
-            for i2 in range(0, size):
+        for i1 in range(start, stop):
+            for i2 in range(start, stop):
                 if i1 == i2:
                     continue
                 u1, u2 = users[i1], users[i2]
                 x = [val for (key, val) in
                      sorted(self.get_indicators(u2).items())]
-                x.append(self._social_relation(u1, u2))
+                x.append(self.social_relation(u1, u2))
                 y = 1 if self.is_friend(u1 ,u2) else 0
                 X.append(np.array(x))
                 Y.append(y)
 
         return np.array(X), np.array(Y)
-
-
