@@ -3,6 +3,7 @@ Trust indicators from (Mauro et al. 2019) and (Fang et al. 2015)
 for which coefficients will eventually be learned.
 """
 from collections import defaultdict, Counter
+import math
 import numpy as np
 
 
@@ -187,9 +188,98 @@ class YelpTrustIndicators:
             return 0
         return numer / denom
 
-    @staticmethod
-    def benevolence(truster, trustee):
-        pass
+    def _pcc(self, review_scores1, avg1, review_scores2, avg2):
+        # Now calculate PCC
+        numer = 0
+        denom1 = 0
+        denom2 = 0
+        for r1, r2 in zip(review_scores1, review_scores2):
+            numer += (r1-avg1)*(r2-avg2)
+            denom1 += pow(r1-avg1, 2)
+            denom2 += pow(r2-avg2, 2)
+        denom = math.sqrt(denom1 * denom2)
+
+        if denom == 0:
+            return 0
+        else:
+            return numer / denom
+
+    def _cos(self, review_scores1, review_scores2):
+        return (np.dot(review_scores1, review_scores2) /
+            (np.linalg.norm(review_scores1)* np.linalg.norm(review_scores2)))
+
+    def _review_avg(self, review_list):
+        return sum(r['stars'] for r in review_list) / len(review_list)
+
+    def benevolence_pcc(self, truster, trustee):
+        shared = truster['reviewed_items'].intersection(trustee['reviewed_items'])
+        if not shared:
+            return 0
+
+        # Note, user['reviews'] is already sorted by business Id
+        truster_scores = [r['stars']
+                          for r in truster['reviews']
+                          if r['business_id'] in shared]
+        trustee_scores = [r['stars']
+                          for r in trustee['reviews']
+                          if r['business_id'] in shared]
+
+        truster_average = sum(r['stars'] for r in truster['reviews']) / len(truster['reviews'])
+        trustee_average = sum(r['stars'] for r in trustee['reviews']) / len(trustee['reviews'])
+
+        # Now calculate PCC
+        return self._pcc(truster_scores, truster_average,
+                         trustee_scores, trustee_average)
+
+    def benevolence_cos(self, truster, trustee):
+        shared = truster['reviewed_items'].intersection(trustee['reviewed_items'])
+        if not shared:
+            return 0
+
+        # Note, user['reviews'] is already sorted by business Id
+        truster_scores = [r['stars']
+                          for r in truster['reviews']
+                          if r['business_id'] in shared]
+        trustee_scores = [r['stars']
+                          for r in trustee['reviews']
+                          if r['business_id'] in shared]
+        return self._cos(truster_scores, trustee_scores)
+
+    def integrity_pcc(self, trustee):
+        reviews = trustee['reviews']
+        trustee_avg = self._review_avg(reviews)
+        trustee_scores = [r['stars'] for r in reviews]
+        avg_reviews = []
+        global_avg = self._yelp_data.review_avg
+        for r in reviews:
+            revs = self._yelp_data.get_reviews_for_item(r['business_id'])
+            avg = self._review_avg(revs)
+            avg_reviews.append(avg)
+
+        return self._pcc(trustee_scores, trustee_avg, avg_reviews, global_avg)
+
+    def integrity_cos(self, trustee):
+        reviews = trustee['reviews']
+        trustee_avg = self._review_avg(reviews)
+        trustee_scores = [r['stars'] for r in reviews]
+        avg_reviews = []
+        global_avg = self._yelp_data.review_avg
+        for r in reviews:
+            revs = self._yelp_data.get_reviews_for_item(r['business_id'])
+            avg = self._review_avg(revs)
+            avg_reviews.append(avg)
+
+        return self._pcc(trustee_scores, trustee_avg, avg_reviews, global_avg)
+
+    def competence(self, trustee):
+        e = 0.5
+        numer = 0
+        denom = 0
+        for review in trustee['reviews']:
+            other_reviews = self._yelp_data.get_reviews_for_item(review['business_id'])
+            numer += len(r for r in other_reviews if abs(r['stars'] - review['stars']) < e)
+            denom += len(other_reviews)
+        return numer / denom
 
     @staticmethod
     def is_friend(truster, trustee):
@@ -202,14 +292,25 @@ class YelpTrustIndicators:
             raise Exception(f"'size' out of bounds. Only have {len(users)} users in memory.")
 
         for i1 in range(start, stop):
+            trustee = users[i1]
+            trustee_feats = [val for (key, val) in
+                     sorted(self.get_indicators(trustee).items())]
             for i2 in range(start, stop):
                 if i1 == i2:
                     continue
-                u1, u2 = users[i1], users[i2]
-                x = [val for (key, val) in
-                     sorted(self.get_indicators(u2).items())]
-                x.append(self.social_relation(u1, u2))
-                y = 1 if self.is_friend(u1 ,u2) else 0
+                trustor = users[i2]
+                # Can I move this out of inner loop?
+                x = [i for i in trustee_feats]
+
+                # Add individual relationships
+                x.append(self.social_relation(trustor, trustee))
+                #x.append(self.benevolence_pcc(u1, trustee))
+                x.append(self.benevolence_cos(trustor, trustee))
+                #x.append(self.integrity_pcc(u2))
+                x.append(self.integrity_cos(trustee))
+
+
+                y = 1 if self.is_friend(trustor, trustee) else 0
                 X.append(np.array(x))
                 Y.append(y)
 
