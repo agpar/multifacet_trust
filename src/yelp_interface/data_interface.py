@@ -50,11 +50,7 @@ class YelpData:
         reviews = self._reviews.get(user_id, [])
         tips = self._tips.get(user_id, [])
         user['reviews'], user['tips'] = [], []
-        if not user['friends']:
-            user['friends'] = set()
-        else:
-            user['friends'] = set(u.strip()
-                                  for u in user['friends'].split(","))
+        user_friends = self.parse_friends(user)
         for review in reviews:
             business = self._businesses[review['business_id']]
             review['business'] = business
@@ -128,6 +124,12 @@ class YelpData:
         self._rating_tuples = rating_tuples
         return rating_tuples
 
+    @staticmethod
+    def parse_friends(user):
+        if not user['friends']:
+            return set()
+        else:
+            return set(u.strip() for u in user['friends'].split(","))
 
 def read_data(read_sample=READ_SAMPLE):
     if not read_sample:

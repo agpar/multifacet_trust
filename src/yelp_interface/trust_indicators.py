@@ -5,6 +5,7 @@ for which coefficients will eventually be learned.
 from collections import defaultdict, Counter
 import math
 import numpy as np
+from tqdm import tqdm
 
 
 class YelpTrustIndicators:
@@ -18,6 +19,7 @@ class YelpTrustIndicators:
         self._yelp_data = yelp_data
         self._indicators = defaultdict(dict)
         self._compute_indicators()
+        self._cache = defaultdict(dict)
 
     def get_indicators(self, user):
         indicators = None
@@ -36,6 +38,12 @@ class YelpTrustIndicators:
     def _addi(self, user, indicator_title, indicator_value):
         """Add an indicator with given title for given user"""
         self._indicators[user['user_id']][indicator_title] = indicator_value
+
+    def _put_cachei(self, user, indicator_title, indicator_value):
+        self._cache[user['user_id']][indicator_title] = indicator_value
+
+    def _get_cachei(self, user, indicator_title):
+        return self._cache[user['user_id']].get(indicator_title, None)
 
     def _compute_indicators(self):
         self._compute_elite_years()
@@ -188,7 +196,8 @@ class YelpTrustIndicators:
             return 0
         return numer / denom
 
-    def _pcc(self, review_scores1, avg1, review_scores2, avg2):
+    @staticmethod
+    def _pcc(review_scores1, avg1, review_scores2, avg2):
         # Now calculate PCC
         numer = 0
         denom1 = 0
@@ -246,6 +255,10 @@ class YelpTrustIndicators:
         return self._cos(truster_scores, trustee_scores)
 
     def integrity_pcc(self, trustee):
+        cached_val = self._get_cachei(trustee, 'integrity_pcc')
+        if cached_val:
+            return cached_val
+
         reviews = trustee['reviews']
         trustee_avg = self._review_avg(reviews)
         trustee_scores = [r['stars'] for r in reviews]
@@ -256,9 +269,15 @@ class YelpTrustIndicators:
             avg = self._review_avg(revs)
             avg_reviews.append(avg)
 
-        return self._pcc(trustee_scores, trustee_avg, avg_reviews, global_avg)
+        val = self._pcc(trustee_scores, trustee_avg, avg_reviews, global_avg)
+        self._put_cachei(trustee, 'integrity_pcc', val)
+        return val
 
     def integrity_cos(self, trustee):
+        cached_val = self._get_cachei(trustee, 'integrity_cos')
+        if cached_val:
+            return cached_val
+
         reviews = trustee['reviews']
         trustee_avg = self._review_avg(reviews)
         trustee_scores = [r['stars'] for r in reviews]
@@ -269,17 +288,24 @@ class YelpTrustIndicators:
             avg = self._review_avg(revs)
             avg_reviews.append(avg)
 
-        return self._pcc(trustee_scores, trustee_avg, avg_reviews, global_avg)
+        val = self._cos(trustee_scores, avg_reviews)
+        self._put_cachei(trustee, 'integrity_cos', val)
+        return val
 
     def competence(self, trustee):
+        cached_val = self._get_cachei(trustee, 'competence')
+        if cached_val:
+            return cached_val
         e = 0.5
         numer = 0
         denom = 0
         for review in trustee['reviews']:
             other_reviews = self._yelp_data.get_reviews_for_item(review['business_id'])
-            numer += len(r for r in other_reviews if abs(r['stars'] - review['stars']) < e)
+            numer += len([r for r in other_reviews if abs(r['stars'] - review['stars']) < e])
             denom += len(other_reviews)
-        return numer / denom
+        val = numer / denom
+        self._put_cachei(trustee, 'competence', val)
+        return val
 
     @staticmethod
     def is_friend(truster, trustee):
@@ -291,26 +317,26 @@ class YelpTrustIndicators:
         if stop > len(users):
             raise Exception(f"'size' out of bounds. Only have {len(users)} users in memory.")
 
-        for i1 in range(start, stop):
+        for i1 in tqdm(range(start, stop)):
             trustee = users[i1]
             trustee_feats = [val for (key, val) in
                      sorted(self.get_indicators(trustee).items())]
             for i2 in range(start, stop):
                 if i1 == i2:
                     continue
-                trustor = users[i2]
+                truster = users[i2]
                 # Can I move this out of inner loop?
                 x = [i for i in trustee_feats]
 
                 # Add individual relationships
-                x.append(self.social_relation(trustor, trustee))
-                #x.append(self.benevolence_pcc(u1, trustee))
-                x.append(self.benevolence_cos(trustor, trustee))
-                #x.append(self.integrity_pcc(u2))
+                x.append(self.social_relation(truster, trustee))
+                x.append(self.benevolence_pcc(truster, trustee))
+                x.append(self.benevolence_cos(truster, trustee))
+                x.append(self.integrity_pcc(trustee))
                 x.append(self.integrity_cos(trustee))
+                x.append(self.competence(trustee))
 
-
-                y = 1 if self.is_friend(trustor, trustee) else 0
+                y = 1 if self.is_friend(truster, trustee) else 0
                 X.append(np.array(x))
                 Y.append(y)
 
