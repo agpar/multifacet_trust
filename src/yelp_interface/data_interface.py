@@ -50,7 +50,7 @@ class YelpData:
         reviews = self._reviews.get(user_id, [])
         tips = self._tips.get(user_id, [])
         user['reviews'], user['tips'] = [], []
-        user_friends = self.parse_friends(user)
+        user['friends'] = self.parse_friends(user)
         for review in reviews:
             business = self._businesses[review['business_id']]
             review['business'] = business
@@ -65,13 +65,15 @@ class YelpData:
         user['reviewed_items'] = set(r['business_id'] for r in user['reviews'])
         # Remove any duplicate reviews if they exist.
         if len(user['reviews']) != user['reviewed_items']:
-            self._remove_dupe_reviews(user)
+            user['reviews'] = self._remove_dupe_reviews(user)
         return user
 
-    def _remove_dupe_reviews(self, user):
+    @staticmethod
+    def _remove_dupe_reviews(reviews):
         new_reviews = []
-        for item in user['reviewed_items']:
-            reviews_for_item = [r for r in user['reviews']
+        items = set([r['business_id'] for r in reviews])
+        for item in items:
+            reviews_for_item = [r for r in reviews
                                 if r['business_id'] == item]
             if len(reviews_for_item) == 1:
                 new_reviews.append(reviews_for_item[0])
@@ -84,7 +86,7 @@ class YelpData:
                         max_date = review['date']
                 new_reviews.append(latest_review)
         new_reviews.sort(key=lambda r: r['business_id'])
-        user['reviews'] = new_reviews
+        return new_reviews
 
     def get_reviews_for_item(self, business):
         if isinstance(business, dict):

@@ -18,20 +18,20 @@ from small_experiments.avg_review_score import AVG_REVIEW_SCORE
 EXP 1:
 Compared to overall average review score
 Using 20_000 users
-    Avg non-friend pcc: 0.0147
-    Avg frinds pcc: 0.0199
+    Avg non-friend pcc: 0.1843
+    Avg frinds pcc: 0.2293
 
 EXP 2:
-Compared to overall average review score
-Using 50_000 users
-
-
+Compared to item average review score
+Using 20_000 users
+    Avg non-friend pcc: -0.011
+    Avg frinds pcc: 0.007
 """
 DATA_DIR = '/home/alex/Documents/datasets/yelp'
 USER_PATH = path.join(DATA_DIR, "user.json")
 REVIEW_PATH = path.join(DATA_DIR, 'review.json')
 
-SAMPLE_SIZE = 50_000
+SAMPLE_SIZE = 20_000
 SHARE_CUTOFF = 3
 
 
@@ -93,6 +93,7 @@ def pcc_itemavg(review_scores1, review_scores2, reviews_by_business):
     numer = 0
     denom1 = 0
     denom2 = 0
+    assert(len(review_scores1) == len(review_scores2))
     for (item_id1, score1), (item_id2, score2) in zip(review_scores1, review_scores2):
         assert(item_id1 == item_id2)
         item_avg = avg_item_score(item_id1, reviews_by_business[item_id1])
@@ -107,7 +108,7 @@ def pcc_itemavg(review_scores1, review_scores2, reviews_by_business):
         return numer / denom
 
 
-def load_vectors():
+def load_data():
     users = {}
     read_count = 0
     print("Loading USERS")
@@ -134,6 +135,7 @@ def load_vectors():
                 continue
             light_review = {
                 'user_id' : full_review['user_id'],
+                'date': full_review['date'],
                 'business_id': full_review['business_id'],
                 'stars': full_review['stars']
             }
@@ -142,11 +144,19 @@ def load_vectors():
     reviews_by_business = defaultdict(list)
     reviewed_by_user = defaultdict(set)
     for reviewlist in reviews_by_user.values():
-        reviewlist.sort(key=lambda x: x['business_id'])
         for review in reviewlist:
             reviews_by_business[review['business_id']].append(review)
             reviewed_by_user[review['user_id']].add(review['business_id'])
 
+    for key in reviews_by_user.keys():
+        if len(reviews_by_user[key]) != len(reviewed_by_user[key]):
+            reviews_by_user[key] = YD._remove_dupe_reviews(reviews_by_user[key])
+        else:
+            reviews_by_user[key] = sorted(reviews_by_user[key], key=lambda x: x['business_id'])
+    return users, reviews_by_user, reviewed_by_user, reviews_by_business
+
+def gen_vectors(users, reviews_by_user,
+                reviewed_by_user, reviews_by_business):
     print("Generating VECTORS")
     user_list = list(users.values())
     vectors = []
@@ -154,7 +164,6 @@ def load_vectors():
         u1 = user_list[i1]
         u1_reviews = reviews_by_user[u1['user_id']]
         u1_avg = avg_user_score(u1['user_id'], u1_reviews)
-        u1_scores = [(r['business_id'], r['stars']) for r in u1_reviews]
         for i2 in range(i1 + 1, len(user_list)):
             u2 = user_list[i2]
             shared_items = reviewed_by_user[u1['user_id']].intersection(reviewed_by_user[u2['user_id']])
@@ -162,9 +171,13 @@ def load_vectors():
                 continue
             u2_reviews = reviews_by_user[u2['user_id']]
             u2_avg = avg_user_score(u2['user_id'], u2_reviews)
-            u2_scores = [(r['business_id'], r['stars']) for r in u2_reviews]
-            pcc = pcc_useravg(u1_scores, AVG_REVIEW_SCORE, u2_scores, AVG_REVIEW_SCORE)
-            #pcc = pcc_itemavg(u1_scores, u2_scores, reviews_by_business)
+
+            u1_scores = [(r['business_id'], r['stars']) for r in u1_reviews
+                         if r['business_id'] in shared_items]
+            u2_scores = [(r['business_id'], r['stars']) for r in u2_reviews
+                         if r['business_id'] in shared_items]
+            #pcc = pcc_useravg(u1_scores, AVG_REVIEW_SCORE, u2_scores, AVG_REVIEW_SCORE)
+            pcc = pcc_itemavg(u1_scores, u2_scores, reviews_by_business)
             vectors.append([are_friends(u1, u2), pcc])
 
     return vectors
