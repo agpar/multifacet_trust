@@ -6,106 +6,44 @@ than a non friend to give advise on the yelp data set?
 
 from os import path
 import json
-import math
 from collections import defaultdict
 from tqdm import tqdm
 from yelp_interface.data_interface import YelpData as YD
-from yelp_interface.trust_indicators import YelpTrustIndicators as YTI
-from small_experiments.avg_review_score import AVG_REVIEW_SCORE
-
+from tools.user_reviews import UserReviews
+from tools.review_similarity import review_pcc
 
 """
 EXP 1:
 Compared to overall average review score
 Using 20_000 users
-    Avg non-friend pcc: 0.1843
+Minimum 3 ratings in common
     Avg frinds pcc: 0.2293
+    Avg non-friend pcc: 0.1843
 
-EXP 2:
+Compared to overall average review score
+Using 50_000 users
+Minimum 3 ratings in common
+    Avg frinds pcc: 0.2307
+    Avg non-friend pcc: 0.1791
+
+EXP 3:
 Compared to item average review score
 Using 20_000 users
-    Avg non-friend pcc: -0.011
+Minimum 3 ratings in common
     Avg frinds pcc: 0.007
+    Avg non-friend pcc: -0.011
 """
+
 DATA_DIR = '/home/alex/Documents/datasets/yelp'
 USER_PATH = path.join(DATA_DIR, "user.json")
 REVIEW_PATH = path.join(DATA_DIR, 'review.json')
 
-SAMPLE_SIZE = 20_000
+SAMPLE_SIZE = 50_000
 SHARE_CUTOFF = 3
-
-
-def avg(lst):
-    return sum(lst) / len(lst)
 
 
 def are_friends(u1, u2):
     return 1 if u2['user_id'] in u1['friends'] else 0
-
-
-def avg_review(review_list):
-    return sum(r['stars'] for r in review_list) / len(review_list)
-
-
-def cache_func(fn):
-    """Cache a func where the first arg is an id"""
-    cache = {}
-    def wrapped(*args):
-        key = args[0]
-        if key in cache:
-            return cache[key]
-        val = fn(*args)
-        cache[key] = val
-        return val
-    return wrapped
-
-
-@cache_func
-def avg_user_score(user_id, review_list):
-    return avg_review(review_list)
-
-
-@cache_func
-def avg_item_score(item_id, review_list):
-    return avg_review(review_list)
-
-
-def pcc_useravg(review_scores1, avg1, review_scores2, avg2):
-    # Now calculate PCC
-    numer = 0
-    denom1 = 0
-    denom2 = 0
-    for (item_id1, score1), (item_id2, score2) in zip(review_scores1, review_scores2):
-        assert(item_id1 == item_id2)
-        numer += (score1-avg1)*(score2-avg2)
-        denom1 += pow(score1-avg1, 2)
-        denom2 += pow(score2-avg2, 2)
-    denom = math.sqrt(denom1 * denom2)
-
-    if denom == 0:
-        return 0
-    else:
-        return numer / denom
-
-
-def pcc_itemavg(review_scores1, review_scores2, reviews_by_business):
-    # Now calculate PCC
-    numer = 0
-    denom1 = 0
-    denom2 = 0
-    assert(len(review_scores1) == len(review_scores2))
-    for (item_id1, score1), (item_id2, score2) in zip(review_scores1, review_scores2):
-        assert(item_id1 == item_id2)
-        item_avg = avg_item_score(item_id1, reviews_by_business[item_id1])
-        numer += (score1 - item_avg) * (score2 - item_avg)
-        denom1 += pow(score1 - item_avg, 2)
-        denom2 += pow(score2 - item_avg, 2)
-    denom = math.sqrt(denom1 * denom2)
-
-    if denom == 0:
-        return 0
-    else:
-        return numer / denom
 
 
 def load_data():
@@ -134,7 +72,7 @@ def load_data():
             if full_review['user_id'] not in read_users:
                 continue
             light_review = {
-                'user_id' : full_review['user_id'],
+                'user_id': full_review['user_id'],
                 'date': full_review['date'],
                 'business_id': full_review['business_id'],
                 'stars': full_review['stars']
@@ -142,43 +80,30 @@ def load_data():
             reviews_by_user[light_review['user_id']].append(light_review)
 
     reviews_by_business = defaultdict(list)
-    reviewed_by_user = defaultdict(set)
     for reviewlist in reviews_by_user.values():
         for review in reviewlist:
             reviews_by_business[review['business_id']].append(review)
-            reviewed_by_user[review['user_id']].add(review['business_id'])
 
-    for key in reviews_by_user.keys():
-        if len(reviews_by_user[key]) != len(reviewed_by_user[key]):
-            reviews_by_user[key] = YD._remove_dupe_reviews(reviews_by_user[key])
-        else:
-            reviews_by_user[key] = sorted(reviews_by_user[key], key=lambda x: x['business_id'])
-    return users, reviews_by_user, reviewed_by_user, reviews_by_business
+    for user in users.values():
+        user['reviews'] = UserReviews(
+            reviews_by_user[user['user_id']],
+            reviews_by_business)
 
-def gen_vectors(users, reviews_by_user,
-                reviewed_by_user, reviews_by_business):
+    return users, reviews_by_business
+
+
+def gen_vectors(users, reviews_by_business):
     print("Generating VECTORS")
     user_list = list(users.values())
     vectors = []
     for i1 in tqdm(range(len(user_list))):
         u1 = user_list[i1]
-        u1_reviews = reviews_by_user[u1['user_id']]
-        u1_avg = avg_user_score(u1['user_id'], u1_reviews)
         for i2 in range(i1 + 1, len(user_list)):
             u2 = user_list[i2]
-            shared_items = reviewed_by_user[u1['user_id']].intersection(reviewed_by_user[u2['user_id']])
+            shared_items = u1['reviews'].mutually_reviewed_items(u2['reviews'])
             if len(shared_items) < SHARE_CUTOFF:
                 continue
-            u2_reviews = reviews_by_user[u2['user_id']]
-            u2_avg = avg_user_score(u2['user_id'], u2_reviews)
-
-            u1_scores = [(r['business_id'], r['stars']) for r in u1_reviews
-                         if r['business_id'] in shared_items]
-            u2_scores = [(r['business_id'], r['stars']) for r in u2_reviews
-                         if r['business_id'] in shared_items]
-            #pcc = pcc_useravg(u1_scores, AVG_REVIEW_SCORE, u2_scores, AVG_REVIEW_SCORE)
-            pcc = pcc_itemavg(u1_scores, u2_scores, reviews_by_business)
-            vectors.append([are_friends(u1, u2), pcc])
+            u1u2_pcc = review_pcc(u1['reviews'], u2['reviews'], "OVERALL")
+            vectors.append([are_friends(u1, u2), u1u2_pcc])
 
     return vectors
-
