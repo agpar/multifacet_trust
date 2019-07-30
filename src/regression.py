@@ -1,9 +1,12 @@
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix
 
+
 def learn_logit(X, Y):
-    clf = LogisticRegression(class_weight='balanced', penalty='l2', solver='saga').fit(X, Y)
+    clf = LogisticRegression(class_weight='balanced',
+            penalty='l2', solver='saga').fit(X, Y)
     return clf
+
 
 def evaluate(clf, X, Y):
     predictions = clf.predict(X)

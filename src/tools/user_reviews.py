@@ -59,15 +59,6 @@ class UserReviews:
         shared = self.reviewed_items.intersection(other_reviews.reviewed_items)
         return shared
 
-    def get_item_avgs(self, review_list):
-        return self.get_avgs(review_list, 'ITEM')
-
-    def get_user_avgs(self, review_list):
-        return self.get_avgs(review_list, 'USER')
-
-    def get_overall_avgs(self, review_list):
-        return self.get_avgs(review_list, 'OVERALL')
-
     def get_avgs(self, review_list, avg_mode):
         """Computes a list of average reviews for each review.
 
@@ -88,20 +79,18 @@ class UserReviews:
             raise Exception(msg)
 
     def _item_review_avg(self, review_list):
-        avgs = []
         for review in review_list:
             item_id = review['business_id']
             avg = avg_item_score(item_id, self._reviews_by_items[item_id])
-            avgs.append(avg)
-        return avgs
+            yield avg
 
     def _user_review_avg(self, review_list):
         user_id = self.review_list[0]['user_id']
         avg = avg_user_score(user_id, self.review_list)
-        return [avg for i in range(len(review_list))]
+        return (avg for i in range(len(review_list)))
 
     def _overall_review_avg(self, review_list):
-        return [self.AVG_REVIEW_SCORE for i in range(len(review_list))]
+        return (self.AVG_REVIEW_SCORE for i in range(len(review_list)))
 
     def _remove_dupes(self, reviews, reviewed_items):
         """Only retain the latest review for each item.
@@ -111,7 +100,9 @@ class UserReviews:
         if not self._has_dupes(reviews, reviewed_items):
             return reviews
         else:
-            return self._linear_dupe_removal(reviews)
+            deduped_reviews = self._linear_dupe_removal(reviews)
+            assert(len(deduped_reviews) == len(reviewed_items))
+            return deduped_reviews
 
     def _has_dupes(self, reviews, reviewed_items):
         return len(reviews) != len(reviewed_items)
@@ -148,3 +139,6 @@ class UserReviews:
 
     def __getitem__(self, key):
         return self.review_list[key]
+
+    def __len__(self):
+        return len(self.review_list)

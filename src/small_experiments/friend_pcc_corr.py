@@ -7,11 +7,11 @@ than a non friend to give advise on the yelp data set?
 from os import path
 import json
 from collections import defaultdict
+from multiprocessing import Pool
 from tqdm import tqdm
 from yelp_interface.data_interface import YelpData as YD
 from tools.user_reviews import UserReviews
 from tools.review_similarity import review_pcc
-
 """
 EXP 1:
 Compared to overall average review score
@@ -38,7 +38,7 @@ DATA_DIR = '/home/alex/Documents/datasets/yelp'
 USER_PATH = path.join(DATA_DIR, "user.json")
 REVIEW_PATH = path.join(DATA_DIR, 'review.json')
 
-SAMPLE_SIZE = 50_000
+SAMPLE_SIZE = 2000
 SHARE_CUTOFF = 3
 
 
@@ -92,18 +92,20 @@ def load_data():
     return users, reviews_by_business
 
 
-def gen_vectors(users, reviews_by_business):
-    print("Generating VECTORS")
+def gen_vectors(users, reviews_by_business, PARALLEL=True):
+    print("Generating function calls")
     user_list = list(users.values())
     vectors = []
-    for i1 in tqdm(range(len(user_list))):
+
+    user_args = arg_map(user_list)
+    for i1 in range(len(user_list)):
         u1 = user_list[i1]
         for i2 in range(i1 + 1, len(user_list)):
             u2 = user_list[i2]
             shared_items = u1['reviews'].mutually_reviewed_items(u2['reviews'])
             if len(shared_items) < SHARE_CUTOFF:
                 continue
+
             u1u2_pcc = review_pcc(u1['reviews'], u2['reviews'], "OVERALL")
             vectors.append([are_friends(u1, u2), u1u2_pcc])
-
     return vectors

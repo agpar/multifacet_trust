@@ -3,9 +3,10 @@ Trust indicators from (Mauro et al. 2019) and (Fang et al. 2015)
 for which coefficients will eventually be learned.
 """
 from collections import defaultdict, Counter
-import math
 import numpy as np
 from tqdm import tqdm
+from tools.review_similarity import review_pcc, review_cos, pcc, cos
+from tools.user_reviews import avg_user_score, avg_item_score
 
 
 class YelpTrustIndicators:
@@ -196,115 +197,68 @@ class YelpTrustIndicators:
             return 0
         return numer / denom
 
-    @staticmethod
-    def _pcc(review_scores1, avg1, review_scores2, avg2):
-        # Now calculate PCC
-        numer = 0
-        denom1 = 0
-        denom2 = 0
-        for r1, r2 in zip(review_scores1, review_scores2):
-            numer += (r1-avg1)*(r2-avg2)
-            denom1 += pow(r1-avg1, 2)
-            denom2 += pow(r2-avg2, 2)
-        denom = math.sqrt(denom1 * denom2)
-
-        if denom == 0:
-            return 0
-        else:
-            return numer / denom
-
-    def _cos(self, review_scores1, review_scores2):
-        return (np.dot(review_scores1, review_scores2) /
-            (np.linalg.norm(review_scores1)* np.linalg.norm(review_scores2)))
-
-    def _review_avg(self, review_list):
-        return sum(r['stars'] for r in review_list) / len(review_list)
-
     def benevolence_pcc(self, truster, trustee):
-        shared = truster['reviewed_items'].intersection(trustee['reviewed_items'])
-        if not shared:
-            return 0
-
-        # Note, user['reviews'] is already sorted by business Id
-        truster_scores = [r['stars']
-                          for r in truster['reviews']
-                          if r['business_id'] in shared]
-        trustee_scores = [r['stars']
-                          for r in trustee['reviews']
-                          if r['business_id'] in shared]
-
-        truster_average = sum(r['stars'] for r in truster['reviews']) / len(truster['reviews'])
-        trustee_average = sum(r['stars'] for r in trustee['reviews']) / len(trustee['reviews'])
-
-        # Now calculate PCC
-        return self._pcc(truster_scores, truster_average,
-                         trustee_scores, trustee_average)
+        reviews1 = truster['reviews']
+        reviews2 = trustee['reviews']
+        return review_pcc(reviews1, reviews2, avg_mode='OVERALL')
 
     def benevolence_cos(self, truster, trustee):
-        shared = truster['reviewed_items'].intersection(trustee['reviewed_items'])
-        if not shared:
-            return 0
+        reviews1 = truster['reviews']
+        reviews2 = trustee['reviews']
+        return review_cos(reviews1, reviews2)
 
-        # Note, user['reviews'] is already sorted by business Id
-        truster_scores = [r['stars']
-                          for r in truster['reviews']
-                          if r['business_id'] in shared]
-        trustee_scores = [r['stars']
-                          for r in trustee['reviews']
-                          if r['business_id'] in shared]
-        return self._cos(truster_scores, trustee_scores)
-
-    def integrity_pcc(self, trustee):
-        cached_val = self._get_cachei(trustee, 'integrity_pcc')
+    def integrity_pcc(self, user):
+        cached_val = self._get_cachei(user, 'integrity_pcc')
         if cached_val:
             return cached_val
 
-        reviews = trustee['reviews']
-        trustee_avg = self._review_avg(reviews)
-        trustee_scores = [r['stars'] for r in reviews]
+        reviews = user['reviews']
         avg_reviews = []
-        global_avg = self._yelp_data.review_avg
         for r in reviews:
             revs = self._yelp_data.get_reviews_for_item(r['business_id'])
-            avg = self._review_avg(revs)
+            avg = avg_item_score(r['business_id'], revs)
             avg_reviews.append(avg)
 
-        val = self._pcc(trustee_scores, trustee_avg, avg_reviews, global_avg)
-        self._put_cachei(trustee, 'integrity_pcc', val)
+        user_scores = [r['stars'] for r in reviews]
+        user_avg = avg_user_score(user['user_id'], reviews)
+        user_avgs = [user_avg for i in range(len(reviews))]
+        global_avgs = [self._yelp_data.review_avg for i in range(len(reviews))]
+        val = pcc(user_scores, user_avgs, avg_reviews, global_avgs)
+        self._put_cachei(user, 'integrity_pcc', val)
         return val
 
-    def integrity_cos(self, trustee):
-        cached_val = self._get_cachei(trustee, 'integrity_cos')
+    def integrity_cos(self, user):
+        cached_val = self._get_cachei(user, 'integrity_cos')
         if cached_val:
             return cached_val
 
-        reviews = trustee['reviews']
-        trustee_avg = self._review_avg(reviews)
-        trustee_scores = [r['stars'] for r in reviews]
+        reviews = user['reviews']
         avg_reviews = []
-        global_avg = self._yelp_data.review_avg
         for r in reviews:
             revs = self._yelp_data.get_reviews_for_item(r['business_id'])
-            avg = self._review_avg(revs)
+            avg = avg_item_score(r['business_id'], revs)
             avg_reviews.append(avg)
 
-        val = self._cos(trustee_scores, avg_reviews)
-        self._put_cachei(trustee, 'integrity_cos', val)
+        user_scores = [r['stars'] for r in reviews]
+        val = cos(user_scores, avg_reviews)
+        self._put_cachei(user, 'integrity_cos', val)
         return val
 
-    def competence(self, trustee):
-        cached_val = self._get_cachei(trustee, 'competence')
+    def competence(self, user):
+        cached_val = self._get_cachei(user, 'competence')
         if cached_val:
             return cached_val
+
         e = 0.5
         numer = 0
         denom = 0
-        for review in trustee['reviews']:
+        for review in user['reviews']:
             other_reviews = self._yelp_data.get_reviews_for_item(review['business_id'])
             numer += len([r for r in other_reviews if abs(r['stars'] - review['stars']) < e])
             denom += len(other_reviews)
         val = numer / denom
-        self._put_cachei(trustee, 'competence', val)
+
+        self._put_cachei(user, 'competence', val)
         return val
 
     @staticmethod
@@ -325,7 +279,6 @@ class YelpTrustIndicators:
                 if i1 == i2:
                     continue
                 truster = users[i2]
-                # Can I move this out of inner loop?
                 x = [i for i in trustee_feats]
 
                 # Add individual relationships

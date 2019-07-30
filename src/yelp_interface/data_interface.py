@@ -15,7 +15,7 @@ from os import path
 from collections import defaultdict
 from collections import namedtuple
 import json
-import copy
+from tools.user_reviews import UserReviews
 
 
 NUM_USERS = 10000
@@ -59,34 +59,9 @@ class YelpData:
             business = self._businesses[tip['business_id']]
             tip['business'] = business
             user['tips'].append(tip)
+        user['reviews'] = UserReviews(user['reviews'], self._reviews_by_item)
 
-        # Sort reviews to avoid expensive repeated sorting.
-        user['reviews'].sort(key=lambda r: r['business_id'])
-        user['reviewed_items'] = set(r['business_id'] for r in user['reviews'])
-        # Remove any duplicate reviews if they exist.
-        if len(user['reviews']) != user['reviewed_items']:
-            user['reviews'] = self._remove_dupe_reviews(user)
         return user
-
-    @staticmethod
-    def _remove_dupe_reviews(reviews):
-        new_reviews = []
-        items = set([r['business_id'] for r in reviews])
-        for item in items:
-            reviews_for_item = [r for r in reviews
-                                if r['business_id'] == item]
-            if len(reviews_for_item) == 1:
-                new_reviews.append(reviews_for_item[0])
-            else:
-                max_date = ''
-                latest_review = None
-                for review in reviews_for_item:
-                    if review['date'] > max_date:
-                        latest_review = review
-                        max_date = review['date']
-                new_reviews.append(latest_review)
-        new_reviews.sort(key=lambda r: r['business_id'])
-        return new_reviews
 
     def get_reviews_for_item(self, business):
         if isinstance(business, dict):
@@ -133,6 +108,7 @@ class YelpData:
         else:
             return set(u.strip() for u in user['friends'].split(","))
 
+
 def read_data(read_sample=READ_SAMPLE):
     if not read_sample:
         USERS_FILE = path.join(DATA_DIR, 'user.json')
@@ -167,7 +143,6 @@ def read_data(read_sample=READ_SAMPLE):
                 reviews[review['user_id']].append(review)
     reviewed_business_ids = set([r['business_id'] for rlist in reviews.values() for r in rlist])
 
-
     # Indexed by user_id
     tips = defaultdict(list)
     with open(TIP_FILE, 'r') as f:
@@ -177,7 +152,6 @@ def read_data(read_sample=READ_SAMPLE):
                 tip['text'] = ''
                 tips[tip['user_id']].append(tip)
     tipped_business_ids = set([t['business_id'] for tlist in tips.values() for t in tlist])
-
 
     # Indexed by review_id and tip id
     businesses = {}
