@@ -1,5 +1,13 @@
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix
+import numpy as np
+
+
+def split(X, split_index, exclude):
+    """Split a data set into features and labels"""
+    Y = X[:, split_index]
+    new_X = np.delete(X, split_index, 1)
+    return new_X, Y
 
 
 def learn_logit(X, Y):

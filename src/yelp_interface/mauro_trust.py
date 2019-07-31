@@ -1,4 +1,4 @@
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, OrderedDict
 
 
 class MauroTrust():
@@ -7,8 +7,27 @@ class MauroTrust():
 
     def __init__(self, users):
         self._users = users
-        self._indicators = defaultdict(dict)
+        self._indicators = defaultdict(OrderedDict)
         self.compute_indicators()
+
+    def get_vector(self, truster, trustee):
+        truster_indicators = list(self.get_indicators(truster).values())
+        trustee_indicators = list(self.get_indicators(trustee).values())
+        values = truster_indicators + trustee_indicators
+        values.append(self.social_relation(truster, trustee))
+        values.append(self.is_friend(truster, trustee))
+        return values
+
+    def vector_labels(self):
+        rand_key = next(iter(self._indicators.keys()))
+        indi_labels = list(self._indicators[rand_key].keys())
+        labels = []
+        for prefix in ('truster_', 'trustee_'):
+            for label in indi_labels:
+                labels.append(f'{prefix}{label}')
+        labels.append('social_jac')
+        labels.append('are_friends')
+        return labels
 
     def get_indicators(self, user):
         indicators = None
@@ -46,6 +65,10 @@ class MauroTrust():
         if numer == 0:
             return 0
         return numer / denom
+
+    @staticmethod
+    def is_friend(truster, trustee):
+        return trustee['user_id'] in truster['friends']
 
     def _elite_year_count(self, user):
         if not user['elite']:
