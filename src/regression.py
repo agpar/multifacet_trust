@@ -3,7 +3,7 @@ from sklearn.metrics import confusion_matrix
 import numpy as np
 
 
-def split(X, split_index, exclude):
+def split(X, split_index):
     """Split a data set into features and labels"""
     Y = X[:, split_index]
     new_X = np.delete(X, split_index, 1)

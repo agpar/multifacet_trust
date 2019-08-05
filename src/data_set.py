@@ -1,12 +1,14 @@
 import numpy as np
+from sklearn.preprocessing import scale
 
 
 class DataSet():
     def __init__(self, data, labels):
         self.data = data
         self._labels = labels
+        self._mask_list = []
 
-    def split(self, target_col, mask_cols):
+    def split(self, target_col, mask_cols=list()):
         """Split this dataset into rows and labels.
 
         target_col: the index of the column to use as targetgs
@@ -14,11 +16,11 @@ class DataSet():
               target_col will be masked whether it appears here or not.
         """
         Y = self.data[:, target_col]
-        mask_list = list(mask_cols)
+        mask_list = list(set(mask_cols).union(self._mask_list))
         if target_col not in mask_cols:
             mask_list.append(target_col)
 
-        X = np.copy(data)
+        X = np.copy(self.data)
         X[:, mask_list] = 0
 
         return DataSplit(self.data, self.labels, X, Y, mask_list)
@@ -44,3 +46,18 @@ class DataSplit(DataSet):
             else:
                 hidden_labels.append(label)
         return hidden_labels
+
+    def unmask(self, col_id):
+        if col_id not in self._mask_list:
+            raise Exception(f"col {col_id} is not masked")
+        self._mask_list.remove(col_id)
+        self.X[:,col_id] = self.data[:,col_id]
+        return self
+
+    def reset(self):
+        """Return a Dataset with nothing masked"""
+        return DataSet(self.data, self.labels)
+
+    def scale(self):
+        self.X = scale(self.X)
+        return self
