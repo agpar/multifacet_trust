@@ -7,11 +7,10 @@ than a non friend to give advise on the yelp data set?
 from os import path
 import json
 from collections import defaultdict
-from multiprocessing import Pool
-from tqdm import tqdm
 from yelp_interface.data_interface import YelpData as YD
 from tools.user_reviews import UserReviews
 from tools.review_similarity import review_pcc
+import settings
 """
 EXP 1:
 Compared to overall average review score
@@ -34,7 +33,8 @@ Minimum 3 ratings in common
     Avg non-friend pcc: -0.011
 """
 
-DATA_DIR = '/home/alex/Documents/datasets/yelp'
+
+DATA_DIR = settings.DATA_DIR
 USER_PATH = path.join(DATA_DIR, "user.json")
 REVIEW_PATH = path.join(DATA_DIR, 'review.json')
 
@@ -97,7 +97,6 @@ def gen_vectors(users, reviews_by_business, PARALLEL=True):
     user_list = list(users.values())
     vectors = []
 
-    user_args = arg_map(user_list)
     for i1 in range(len(user_list)):
         u1 = user_list[i1]
         for i2 in range(i1 + 1, len(user_list)):

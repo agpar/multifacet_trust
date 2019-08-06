@@ -1,6 +1,8 @@
 from os import path
+import json
+import settings
 
-DATA_DIR = '/home/alex/Documents/datasets/yelp'
+DATA_DIR = settings.DATA_DIR
 REVIEW_PATH = path.join(DATA_DIR, 'review.json')
 
 # Based on running avg_review_score() - just saving data here.

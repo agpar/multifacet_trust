@@ -15,11 +15,15 @@ from os import path
 from collections import defaultdict
 from collections import namedtuple
 import json
+
 from tools.user_reviews import UserReviews
 
-NUM_USERS = 10000
-DATA_DIR = '/home/alex/Documents/datasets/yelp'
-READ_SAMPLE = True
+try:
+    import settings
+except ImportError as e:
+    print("Failed to import settings. Did you create a src/settings.py file?")
+    raise e
+
 
 RatingTuple = namedtuple('Rating', 'user_id item_id score')
 
@@ -110,7 +114,7 @@ class YelpData:
             return set(u.strip() for u in user['friends'].split(","))
 
 
-def read_data(user_range=(0, NUM_USERS), read_sample=READ_SAMPLE,
+def read_data(user_range=(0, settings.DATA_NUM_USERS), read_sample=settings.DATA_READ_SAMPLE,
               user_filter=None, review_filter=None, tip_filter=None,
               business_filter=None):
     """Read data from yelp data set. Return a YelpData object with contents.
@@ -124,15 +128,15 @@ def read_data(user_range=(0, NUM_USERS), read_sample=READ_SAMPLE,
     :return: A YelpData with the data read from text files.
     """
     if not read_sample:
-        USERS_FILE = path.join(DATA_DIR, 'user.json')
-        BUSINESS_FILE = path.join(DATA_DIR, 'business.json')
-        REVIEW_FILE = path.join(DATA_DIR, 'review.json')
-        TIP_FILE = path.join(DATA_DIR, 'tip.json')
+        USERS_FILE = path.join(settings.DATA_DIR, 'user.json')
+        BUSINESS_FILE = path.join(settings.DATA_DIR, 'business.json')
+        REVIEW_FILE = path.join(settings.DATA_DIR, 'review.json')
+        TIP_FILE = path.join(settings.DATA_DIR, 'tip.json')
     else:
-        USERS_FILE = path.join(DATA_DIR, 'user_sample.json')
-        BUSINESS_FILE = path.join(DATA_DIR, 'business_sample.json')
-        REVIEW_FILE = path.join(DATA_DIR, 'review_sample.json')
-        TIP_FILE = path.join(DATA_DIR, 'tip_sample.json')
+        USERS_FILE = path.join(settings.DATA_DIR, 'user_sample.json')
+        BUSINESS_FILE = path.join(settings.DATA_DIR, 'business_sample.json')
+        REVIEW_FILE = path.join(settings.DATA_DIR, 'review_sample.json')
+        TIP_FILE = path.join(settings.DATA_DIR, 'tip_sample.json')
 
     if not user_filter:
         user_filter = lambda x: x
@@ -189,10 +193,10 @@ def read_data(user_range=(0, NUM_USERS), read_sample=READ_SAMPLE,
 
 def save_sample(users, reviews, tips, businesses):
     """Write out the NUM_USERS samples so they can be used again later."""
-    USER_SAMPLE_PATH = path.join(DATA_DIR, 'user_sample.json')
-    REVIEW_SAMPLE_PATH = path.join(DATA_DIR, 'review_sample.json')
-    TIP_SAMPLE_PATH = path.join(DATA_DIR, 'tip_sample.json')
-    BUSINESS_SAMPLE_PATH = path.join(DATA_DIR, 'business_sample.json')
+    USER_SAMPLE_PATH = path.join(settings.DATA_DIR, 'user_sample.json')
+    REVIEW_SAMPLE_PATH = path.join(settings.DATA_DIR, 'review_sample.json')
+    TIP_SAMPLE_PATH = path.join(settings.DATA_DIR, 'tip_sample.json')
+    BUSINESS_SAMPLE_PATH = path.join(settings.DATA_DIR, 'business_sample.json')
 
     with open(USER_SAMPLE_PATH, 'w') as f:
         for user in users.values():

@@ -4,3 +4,4 @@ librec
 todo.txt
 rqs.txt
 *.swp
+src/settings.py
