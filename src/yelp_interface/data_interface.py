@@ -154,7 +154,9 @@ def read_data(user_range=(0, settings.DATA_NUM_USERS), read_sample=settings.DATA
         for line in f:
             if line_no >= user_range[0]:
                 user = json.loads(line)
-                users[user['user_id']] = user_filter(user)
+                filtered_user = user_filter(user)
+                if filtered_user:
+                    users[user['user_id']] = filtered_user
             line_no += 1
             if line_no == user_range[1]:
                 break
@@ -167,7 +169,9 @@ def read_data(user_range=(0, settings.DATA_NUM_USERS), read_sample=settings.DATA
             review = json.loads(line)
             if review['user_id'] in user_ids:
                 review['text'] = ''
-                reviews[review['user_id']].append(review_filter(review))
+                filtered_review = review_filter(review)
+                if filtered_review:
+                    reviews[review['user_id']].append(filtered_review)
     reviewed_business_ids = set([r['business_id'] for rlist in reviews.values() for r in rlist])
 
     # Indexed by user_id
@@ -177,7 +181,9 @@ def read_data(user_range=(0, settings.DATA_NUM_USERS), read_sample=settings.DATA
             tip = json.loads(line)
             if tip['user_id'] in user_ids:
                 tip['text'] = ''
-                tips[tip['user_id']].append(tip_filter(tip))
+                filtered_tip = tip_filter(tip)
+                if filtered_tip:
+                    tips[tip['user_id']].append(filtered_tip)
     tipped_business_ids = set([t['business_id'] for tlist in tips.values() for t in tlist])
 
     # Indexed by review_id and tip id
@@ -186,7 +192,9 @@ def read_data(user_range=(0, settings.DATA_NUM_USERS), read_sample=settings.DATA
         for line in f:
             business = json.loads(line)
             if business['business_id'] in reviewed_business_ids or business['business_id'] in tipped_business_ids:
-                businesses[business['business_id']] = business_filter(business)
+                filtered_business = business_filter(business)
+                if filtered_business:
+                    businesses[business['business_id']] = filtered_business
 
     return YelpData(users, reviews, tips, businesses)
 
