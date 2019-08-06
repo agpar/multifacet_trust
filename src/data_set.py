@@ -2,19 +2,22 @@ import numpy as np
 from sklearn.preprocessing import scale
 
 
-class DataSet():
+class DataSet:
     def __init__(self, data, labels):
         self.data = data
         self._labels = labels
         self._mask_list = []
 
-    def split(self, target_col, mask_cols=list()):
+    def split(self, target_col, mask_cols=None):
         """Split this dataset into rows and labels.
 
         target_col: the index of the column to use as targetgs
         mask: an iterable of columns indices to hide. The column at
               target_col will be masked whether it appears here or not.
         """
+        if mask_cols is None:
+            mask_cols = list()
+
         Y = self.data[:, target_col]
         mask_list = list(set(mask_cols).union(self._mask_list))
         if target_col not in mask_cols:
@@ -51,7 +54,7 @@ class DataSplit(DataSet):
         if col_id not in self._mask_list:
             raise Exception(f"col {col_id} is not masked")
         self._mask_list.remove(col_id)
-        self.X[:,col_id] = self.data[:,col_id]
+        self.X[:, col_id] = self.data[:, col_id]
         return self
 
     def reset(self):
