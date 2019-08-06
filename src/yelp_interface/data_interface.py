@@ -17,12 +17,12 @@ from collections import namedtuple
 import json
 from tools.user_reviews import UserReviews
 
-
 NUM_USERS = 10000
 DATA_DIR = '/home/alex/Documents/datasets/yelp'
 READ_SAMPLE = True
 
 RatingTuple = namedtuple('Rating', 'user_id item_id score')
+
 
 class YelpData:
     def __init__(self, users, reviews, tips, businesses):
@@ -30,7 +30,8 @@ class YelpData:
         self._reviews = reviews
         self._tips = tips
         self._businesses = businesses
-        self.review_avg = sum(r['stars'] for rlist in self._reviews.values() for r in rlist) / sum(len(rlist) for rlist in self._reviews.values())
+        self.review_avg = sum(r['stars'] for rlist in self._reviews.values() for r in rlist) / sum(
+            len(rlist) for rlist in self._reviews.values())
 
         self._rating_tuples = []
         self.reviews_by_item = defaultdict(list)
@@ -109,7 +110,19 @@ class YelpData:
             return set(u.strip() for u in user['friends'].split(","))
 
 
-def read_data(read_sample=READ_SAMPLE):
+def read_data(user_range=(0, NUM_USERS), read_sample=READ_SAMPLE,
+              user_filter=None, review_filter=None, tip_filter=None,
+              business_filter=None):
+    """Read data from yelp data set. Return a YelpData object with contents.
+
+    :param user_range: A tuple specifying the indexes of the first and last user to read.
+    :param user_filter: An optional f: dict -> dict which can be used to modify users as they are read.
+    :param review_filter: An optional f: dict -> dict which can be used to modify reviews as they are read.
+    :param tip_filter:  An optional f: dict -> dict which can be used to modify tips as they are read.
+    :param business_filter:  An optional f: dict -> dict which can be used to modify businesses as they are read.
+    :param read_sample: A boolean flag. Set to true to load a predefined sample (for testing)
+    :return: A YelpData with the data read from text files.
+    """
     if not read_sample:
         USERS_FILE = path.join(DATA_DIR, 'user.json')
         BUSINESS_FILE = path.join(DATA_DIR, 'business.json')
@@ -121,15 +134,25 @@ def read_data(read_sample=READ_SAMPLE):
         REVIEW_FILE = path.join(DATA_DIR, 'review_sample.json')
         TIP_FILE = path.join(DATA_DIR, 'tip_sample.json')
 
+    if not user_filter:
+        user_filter = lambda x: x
+    if not review_filter:
+        review_filter = lambda x: x
+    if not tip_filter:
+        tip_filter = lambda x: x
+    if not business_filter:
+        business_filter = lambda x: x
+
     # Indexed by user_id.
     users = {}
     with open(USERS_FILE, 'r') as f:
-        num_read = 0
+        line_no = 0
         for line in f:
-            user = json.loads(line)
-            users[user['user_id']] = user
-            num_read += 1
-            if num_read == NUM_USERS:
+            if line_no >= user_range[0]:
+                user = json.loads(line)
+                users[user['user_id']] = user_filter(user)
+            line_no += 1
+            if line_no == user_range[1]:
                 break
     user_ids = set(users.keys())
 
@@ -140,7 +163,7 @@ def read_data(read_sample=READ_SAMPLE):
             review = json.loads(line)
             if review['user_id'] in user_ids:
                 review['text'] = ''
-                reviews[review['user_id']].append(review)
+                reviews[review['user_id']].append(review_filter(review))
     reviewed_business_ids = set([r['business_id'] for rlist in reviews.values() for r in rlist])
 
     # Indexed by user_id
@@ -150,7 +173,7 @@ def read_data(read_sample=READ_SAMPLE):
             tip = json.loads(line)
             if tip['user_id'] in user_ids:
                 tip['text'] = ''
-                tips[tip['user_id']].append(tip)
+                tips[tip['user_id']].append(tip_filter(tip))
     tipped_business_ids = set([t['business_id'] for tlist in tips.values() for t in tlist])
 
     # Indexed by review_id and tip id
@@ -159,7 +182,7 @@ def read_data(read_sample=READ_SAMPLE):
         for line in f:
             business = json.loads(line)
             if business['business_id'] in reviewed_business_ids or business['business_id'] in tipped_business_ids:
-                businesses[business['business_id']] = business
+                businesses[business['business_id']] = business_filter(business)
 
     return YelpData(users, reviews, tips, businesses)
 
@@ -175,22 +198,22 @@ def save_sample(users, reviews, tips, businesses):
         for user in users.values():
             if user.get('reviews'):
                 del user['reviews']
-            f.write(json.dumps(user)+"\n")
+            f.write(json.dumps(user) + "\n")
 
     with open(REVIEW_SAMPLE_PATH, 'w') as f:
         for user_reviews in reviews.values():
             for review in user_reviews:
                 if review.get('business'):
                     del review['business']
-                f.write(json.dumps(review)+"\n")
+                f.write(json.dumps(review) + "\n")
 
     with open(TIP_SAMPLE_PATH, 'w') as f:
         for user_tips in tips.values():
             for tip in user_tips:
                 if tip.get('business'):
                     del tip['business']
-                f.write(json.dumps(tip)+"\n")
+                f.write(json.dumps(tip) + "\n")
 
     with open(BUSINESS_SAMPLE_PATH, 'w') as f:
         for business in businesses.values():
-            f.write(json.dumps(business)+"\n")
+            f.write(json.dumps(business) + "\n")
